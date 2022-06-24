@@ -1,0 +1,7 @@
+color_image_topic: "/camera/color/image_raw"
+detections: "/detectnet/detections"
+goal_frame_id : "odom"
+min_follow_distance : 1.0
+max_follow_distance : 5.0
+person_3d_locate_disable : true # change it to false to publish target location of person at the start of the application (or) can be enabled by setting this parameter at parameter server in runtime
+
