@@ -31,6 +31,7 @@
 #include <sensor_msgs/CameraInfo.h>
 
 #include <sensor_msgs/LaserScan.h>
+#include <std_msgs/Bool.h>
 
 #include <image_geometry/stereo_camera_model.h>
 #include <message_filters/subscriber.h>
@@ -76,7 +77,8 @@ enum FollowerState
     IDLE,
     FOLLOW,
     FIND_LOST_CAMERA_TARGET_BY_LIDAR,
-    PREDICT_LOST_TARGET
+    PREDICT_LOST_TARGET,
+    STOP
 };
 
 struct Person
@@ -156,6 +158,10 @@ public:
             nodeHandler_.subscribe<nav_msgs::OccupancyGrid>("/map", 1,
                                                      &CogniteamPersonFollower::globalMapCallback, this);
 
+        stop_start_follower_sub_ =
+            nodeHandler_.subscribe<std_msgs::Bool>("/stop_start_follower", 1,
+                                        &CogniteamPersonFollower::stopStartFollowerCallback, this);
+
         // publishers
 
         targets_marker_pub_ = nodeHandler_.advertise<visualization_msgs::MarkerArray>("/camera_targets", 10);
@@ -168,10 +174,13 @@ public:
 
         lidar_obstacles_pub_ = nodeHandler_.advertise<visualization_msgs::MarkerArray>("/lidar_obstacles", 10);
 
+        is_person_detected_pub_ = nodeHandler_.advertise<std_msgs::Bool>("/is_person_detected", 10);
+
+
 
 
         twistCommandPublisher_ = 
-            nodeHandler_.advertise<geometry_msgs::Twist>(/*"/cmd_vel/"*/cmd_vel_topic_, 1, false);
+            nodeHandler_.advertise<geometry_msgs::Twist>(cmd_vel_topic_, 1, false);
 
         lidar_fov_marker_pub_ = nodeHandler_.advertise<visualization_msgs::Marker>("/lidar_area", 10);
 
@@ -227,158 +236,198 @@ public:
             bgrWorkImg = currentBgrImg_.clone();
             depthImg = curretDepthImg_.clone();
 
+
+            if( startStopFollower_ == false) {
+
+                state_ = STOP;
+            } 
+
             cerr << getState() << endl;
+
 
             switch (state_)
             {
-            case IDLE:
-            {   
-
-                auto start = high_resolution_clock::now();
-
-                currentCameraTargets = collectCameraTargets(bgrWorkImg, depthImg);
-                
-                auto end = high_resolution_clock::now();
-                float duration = float(duration_cast<milliseconds>(end - start).count()) / 1000.0;
-
-                cerr<<"collectCameraTargets duration "<<duration<<endl;
-
-                if (currentCameraTargets.size() == 0)
-                {
-
-                    // cerr << " no depth currentCameraTargets IDLE " << endl;
-                    sendStopCmd();
-                    state_ = IDLE;
-                    break;
-                }
-
-                // found target, init global target
-                if (!initGlobalTarget(currentCameraTargets, globalTarget, bgrWorkImg))
-                {
-                    // cerr << "iiiiiiiinit failed !!!! " << endl;
-                    sendStopCmd();
-                    state_ = IDLE;
-                    break;
-                }
-                bool isBlocked = isBlockedByObstacle(globalTarget, max_dist_obstacle_collision_);
-
-                if (isBlocked)
+                case STOP:
                 {   
+                    
+                    if( startStopFollower_ == true ){
+
+                        state_ = IDLE;
+                        break;
+                    }
+
                     sendStopCmd();
+
+                    // detect with dnn perosns
+                    sensor_msgs::ImagePtr image_msg_detect = cv_bridge::CvImage(std_msgs::Header(), "bgr8", bgrWorkImg).toImageMsg();
+                    detectnetWrapper.Detect(image_msg_detect);             
+
+                    // loop over detection and create targets array of persosn
+                    for (auto detection : detectnetWrapper.detection2DArray.detections)
+                    {    
+
+                        float score = detection.results[0].score;
+                        if( score < PERSON_THRESHOLD){
+                            continue;
+                        }
+                        if ((detection.results[0].id == PERSON_CLASS_ID) )
+                        {   
+                            publishPersonDetected();
+
+                            state_ = STOP;
+                            break;
+                        }
+                    }
+
+                }
+                case IDLE:
+                {   
+
+
+                    currentCameraTargets = collectCameraTargets(bgrWorkImg, depthImg);                   
+                
+                    if (currentCameraTargets.size() == 0)
+                    {
+
+                        cerr << " no depth currentCameraTargets IDLE " << endl;
+                        sendStopCmd();
+                        state_ = IDLE;
+                        break;
+                    }                
+
+                    // found target, init global target
+                    if (!initGlobalTarget(currentCameraTargets, globalTarget, bgrWorkImg))
+                    {
+                        // cerr << "iiiiiiiinit failed !!!! " << endl;
+                        sendStopCmd();
+                        state_ = IDLE;
+                        break;
+                    }
+                    bool isBlocked = isBlockedByObstacle(globalTarget, max_dist_obstacle_collision_);
+
+                    if (isBlocked)
+                    {   
+                        sendStopCmd();
+                        state_ = FOLLOW;
+                        break;
+                        // sendCmdVel(globalTarget, 1.0, true); 
+                        cout<<"Blocked by an obstacle when in IDLE"<<endl;        
+                    }
+                    else {
+                        sendCmdVel(globalTarget);
+                    }
+
+                    publishRectangleTargetMarker(globalTarget.distanceM_);
+                    
                     state_ = FOLLOW;
                     break;
-                    // sendCmdVel(globalTarget, 1.0, true); 
-                    cout<<"Blocked by an obstacle when in IDLE"<<endl;        
                 }
-                else {
-                    sendCmdVel(globalTarget);
-                }
-                //publishDetections();
-                publishRectangleTargetMarker(globalTarget.distanceM_);
-                state_ = FOLLOW;
-                break;
-            }
-            case FOLLOW:
-            {
-                auto start = high_resolution_clock::now();
-    
-                currentCameraTargets = collectCameraTargets(bgrWorkImg, depthImg);
+                case FOLLOW:
+                {        
+                    currentCameraTargets = collectCameraTargets(bgrWorkImg, depthImg);
+                    cerr<<"1111111111111111111111111111111 "<<endl;
+                    /// there is no targets
+                    if (currentCameraTargets.size() == 0)
+                    {
+                        cerr<<"2222222222222222222222222222222222222 "<<endl;
 
+                        cerr << " no depth currentCameraTargets FOLLOW " << endl;
+                    
+                        state_ = FIND_LOST_CAMERA_TARGET_BY_LIDAR;
 
-                auto end = high_resolution_clock::now();
-                float duration = float(duration_cast<milliseconds>(end - start).count()) / 1000.0;
+                        break;
+                    }
 
-                cerr<<"collectCameraTargets duration "<<duration<<endl;
+                    cerr<<"33333333333333333333333333333333333333333 "<<endl;
 
-                /// there is no targets
-                if (currentCameraTargets.size() == 0)
-                {
-
-                    // cerr << " no depth currentCameraTargets FOLLOW " << endl;
-                   
-                    state_ = FIND_LOST_CAMERA_TARGET_BY_LIDAR;
-
-                    break;
-                }
                 
-                // found targets, try to update the global target 
-                if (!updateGlobalTarget(currentCameraTargets, globalTarget))
-                {
+                    
+                    // found targets, try to update the global target 
+                    if (!updateGlobalTarget(currentCameraTargets, globalTarget))
+                    {
 
-                    // cerr << "ffffffffffffffffffaild update " << endl;                    
+                        cerr << "ffffffffffffffffffaild update in FOLLOW" << endl;           
 
-                    // it it false, we found global target but it noise,
-                    // stay this state but robot stop
+                    
 
-                    state_ = FIND_LOST_CAMERA_TARGET_BY_LIDAR;
+                        state_ = FIND_LOST_CAMERA_TARGET_BY_LIDAR;
 
-                    break;
-                }
-
-                bool isBlocked = isBlockedByObstacle(globalTarget, max_dist_obstacle_collision_);
-
-                if (isBlocked)
-                {   
-                    sendStopCmd();
-                    break;
-                    // sendCmdVel(globalTarget, 1.0, true);
-                  
-                } else {
-                    sendCmdVel(globalTarget);
-                }
-
-                // there is targets, try to inut global target
-
-                //publishDetections(); 
-
-                publishRectangleTargetMarker(globalTarget.distanceM_);             
-
-
-                state_ = FOLLOW;
-                break;
-            }
-            case FIND_LOST_CAMERA_TARGET_BY_LIDAR:
-            {
-                countFindWithLidar_++;
-
-                if (updateGlobalTargetBylidar(globalTarget))
-                {   
+                        break;
+                    }
 
                     bool isBlocked = isBlockedByObstacle(globalTarget, max_dist_obstacle_collision_);
 
-                    if(isBlocked) {
-                        
+                    if (isBlocked)
+                    {   
                         sendStopCmd();
+                        
+                        state_ = FOLLOW;
+                        
                         break;
-                        // sendStopCmd();
-                        // state_ = FOLLOW;
-                        // break;
-
+                        // sendCmdVel(globalTarget, 1.0, true);
+                    
                     } else {
                         sendCmdVel(globalTarget);
                     }
 
-                    publishLidarMarker(globalTarget);
+                    // there is targets, try to inut global target
 
-                    publishRectangleTargetMarker(globalTarget.distanceM_);
+
+                    publishRectangleTargetMarker(globalTarget.distanceM_);             
+
 
                     state_ = FOLLOW;
                     break;
                 }
-                // leg target not work, give another chance
-                if (countFindWithLidar_ > maxLlidarTrials_)
-                {
-                    countFindWithLidar_ = 0;
+                case FIND_LOST_CAMERA_TARGET_BY_LIDAR:
+                {   
 
-                    state_ = IDLE;
-                    break;
+                    cerr<<" inside FIND_LOST_CAMERA_TARGET_BY_LIDAR "<<endl;
+
+                    countFindWithLidar_++;
+
+                    if (updateGlobalTargetBylidar(globalTarget))
+                    {   
+
+                        bool isBlocked = isBlockedByObstacle(globalTarget, max_dist_obstacle_collision_);
+
+                        if(isBlocked) {
+                            
+                            sendStopCmd();
+                            break;
+                            // sendStopCmd();
+                            // state_ = FOLLOW;
+                            // break;
+
+                        } else {
+                            sendCmdVel(globalTarget);
+                        }
+
+                        publishLidarMarker(globalTarget);
+
+                        publishRectangleTargetMarker(globalTarget.distanceM_);
+
+                        state_ = FOLLOW;
+                        break;
+
+                    } else {
+
+                        cerr<<" failed to track with lidar !!!!!!!!!!!!!!!!!!!!!111 "<<endl;
+                    }
+                    // leg target not work, give another chance
+                    if (countFindWithLidar_ > maxLlidarTrials_)
+                    {
+                        countFindWithLidar_ = 0;
+
+                        state_ = IDLE;
+                        break;
+                    }
+                    else
+                    {
+                        state_ = FIND_LOST_CAMERA_TARGET_BY_LIDAR;
+                        break;
+                    }
                 }
-                else
-                {
-                    state_ = FIND_LOST_CAMERA_TARGET_BY_LIDAR;
-                    break;
-                }
-            }
             }
 
             publishLidarSearchMarker();
@@ -400,6 +449,15 @@ public:
     }
 
 private:
+
+    void publishPersonDetected(){
+
+        std_msgs::Bool msg;
+        msg.data = true;
+        is_person_detected_pub_.publish(msg);
+
+    }
+
     void writeDepthImg()
     {
 
@@ -512,6 +570,10 @@ private:
         case PREDICT_LOST_TARGET:
         {
             return "PREDICT_LOST_TARGET";
+        }
+        case STOP:
+        {
+            return "STOP";
         }
         }
 
@@ -781,6 +843,19 @@ private:
         return dist;
     }
 
+    void stopStartFollowerCallback(const std_msgs::Bool::ConstPtr &msg){
+
+        if (msg->data == true){
+
+            startStopFollower_ = true;
+        } 
+        else {
+
+            startStopFollower_ = false;
+        }
+
+    }
+
     void globalMapCallback(const nav_msgs::OccupancyGrid::ConstPtr &msg)
     {
 
@@ -814,6 +889,7 @@ private:
 
     bool isBlockedByObstacle(const Person &globalTarget, float maxDistFromObstacleCollision = 0.5)
     {   
+
         vector<cv::Point2d> currentLidarObstacleBaseLink;
 
         visualization_msgs::MarkerArray Markerarr;
@@ -856,7 +932,7 @@ private:
 
                 //cout<<"IN isBlockedByObstacle before comparing the current distance: "<<distFromRbot<<" with the max"<<endl;
                 
-                if( distFromRbot <= maxDistFromObstacleCollision ) {
+                if( distFromRbot <= maxDistFromObstacleCollision && distFromRbot > 0.3 ) {
                     cerr<<"Detected Obstacle"<<endl;
 
                     currentLidarObstacleBaseLink.push_back(pLaser);
@@ -931,6 +1007,9 @@ private:
             cerr << "No RGB targets" << endl;
             return currentTargets;
         } 
+
+        publishPersonDetected();
+
         // loop over detection and create targets array of persosn
         for (auto detection : detectnetWrapper.detection2DArray.detections)
         {    
@@ -1042,7 +1121,7 @@ private:
             {
                 /// convert center of mass tho 3d location
                 cv::Point3d threedp = pinholeCameraModel_.projectPixelTo3dRay(centerOfMasPix);
-                threedp.x *= global_distance;
+                threedp.x *= global_distance;   
                 threedp.y *= global_distance;
                 threedp.z *= global_distance;
 
@@ -1060,7 +1139,6 @@ private:
         return -1;
     }
 
-    // yakir
     void depthCallback(const sensor_msgs::ImageConstPtr &image)
     {
 
@@ -1362,6 +1440,8 @@ private:
         float minDist = std::numeric_limits<float>::max();
         float index = -1;
 
+        cerr<<" filteredLegs_.legs.size() "<<filteredLegs_.legs.size()<<endl;
+
         for (int i = 0; i < filteredLegs_.legs.size(); i++)
         {
 
@@ -1423,11 +1503,7 @@ private:
 
             leg_tracker::Leg leg = msg->legs[i];
 
-            // confidence validation
-            // if (leg.confidence < nim_leg_confidence_)
-            // {
-            //     continue;
-            // }
+          
 
             bool isObstacle = false;
             // leg is not static obstacle
@@ -1462,20 +1538,14 @@ private:
             float angleFromRobot =
                 (angles::to_degrees(atan2(leg.position.y, leg.position.x)));
 
-            // leg inside Boundaries
-            if ((angleFromRobot >= searchDegMin_ && angleFromRobot <= searchDegMax_) || 
-                (angleFromRobot >= (-searchDegMax_) && angleFromRobot <= (-searchDegMin_)))
-            {
-
-                float dist = distanceCalculate(cv::Point2d(leg.position.x, leg.position.y),
+            float dist = distanceCalculate(cv::Point2d(leg.position.x, leg.position.y),
                                                cv::Point2d(0, 0));
 
-                // leg not too far from the robot (lidar param)
-                if (dist < maxDistanceLidarSearch_)
-                {
+            // leg not too far from the robot (lidar param)
+            if (dist < maxDistanceLidarSearch_ && dist > 0.3) // yakir
+            {
 
-                    filteredLegs_.legs.push_back(leg);
-                }
+                filteredLegs_.legs.push_back(leg);
             }
         }
 
@@ -1654,106 +1724,106 @@ private:
     void publishLidarSearchMarker()
     {
 
-        std::srand(std::time(nullptr)); // use current time as seed for random generator
-        int random_variable = std::rand();
+        // std::srand(std::time(nullptr)); // use current time as seed for random generator
+        // int random_variable = std::rand();
 
-        visualization_msgs::Marker line_strip;
-        line_strip.header.frame_id = base_frame_;
-        line_strip.header.stamp = ros::Time::now();
-        line_strip.ns = "points_and_lines";
-        line_strip.pose.orientation.w = 1.0;
-        line_strip.id = 7000;
+        // visualization_msgs::Marker line_strip;
+        // line_strip.header.frame_id = base_frame_;
+        // line_strip.header.stamp = ros::Time::now();
+        // line_strip.ns = "points_and_lines";
+        // line_strip.pose.orientation.w = 1.0;
+        // line_strip.id = 7000;
 
-        line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+        // line_strip.type = visualization_msgs::Marker::LINE_STRIP;
 
-        line_strip.scale.x = 0.02;
-        line_strip.color.b = 1.0;
-        line_strip.color.g = 0.5;
-        line_strip.color.r = 0.7;
+        // line_strip.scale.x = 0.02;
+        // line_strip.color.b = 1.0;
+        // line_strip.color.g = 0.5;
+        // line_strip.color.r = 0.7;
 
-        line_strip.color.a = 1.0;
+        // line_strip.color.a = 1.0;
 
-        float globalOffset = 0.1;
-        float offset = globalOffset;
-        float delta = 0.1;
-        int num_of_points = 30;
+        // float globalOffset = 0.1;
+        // float offset = globalOffset;
+        // float delta = 0.1;
+        // int num_of_points = 30;
 
-        for (uint32_t i = 0; i < num_of_points; ++i)
-        {
-            geometry_msgs::Point p;
+        // for (uint32_t i = 0; i < num_of_points; ++i)
+        // {
+        //     geometry_msgs::Point p;
 
-            p.y = (offset)*sin(angles::from_degrees(searchDegMin_));
-            p.x = (offset)*cos(angles::from_degrees(searchDegMin_));
-            p.z = 0;
+        //     p.y = (offset)*sin(angles::from_degrees(searchDegMin_));
+        //     p.x = (offset)*cos(angles::from_degrees(searchDegMin_));
+        //     p.z = 0;
 
-            offset += delta;
+        //     offset += delta;
 
-            if (offset > maxDistanceLidarSearch_)
-            {
-                break;
-            }
+        //     if (offset > maxDistanceLidarSearch_)
+        //     {
+        //         break;
+        //     }
 
-            line_strip.points.push_back(p);
-        }
+        //     line_strip.points.push_back(p);
+        // }
 
-        offset = globalOffset;
-        for (uint32_t i = 0; i < num_of_points; ++i)
-        {
-            geometry_msgs::Point p;
+        // offset = globalOffset;
+        // for (uint32_t i = 0; i < num_of_points; ++i)
+        // {
+        //     geometry_msgs::Point p;
 
-            p.y = (offset)*sin(angles::from_degrees(searchDegMax_));
-            p.x = (offset)*cos(angles::from_degrees(searchDegMax_));
-            p.z = 0;
+        //     p.y = (offset)*sin(angles::from_degrees(searchDegMax_));
+        //     p.x = (offset)*cos(angles::from_degrees(searchDegMax_));
+        //     p.z = 0;
 
-            offset += delta;
+        //     offset += delta;
 
-            if (offset > maxDistanceLidarSearch_)
-            {
-                break;
-            }
+        //     if (offset > maxDistanceLidarSearch_)
+        //     {
+        //         break;
+        //     }
 
-            line_strip.points.push_back(p);
-        }
+        //     line_strip.points.push_back(p);
+        // }
 
-        offset = globalOffset;
-        for (uint32_t i = 0; i < num_of_points; ++i)
-        {
-            geometry_msgs::Point p;
+        // offset = globalOffset;
+        // for (uint32_t i = 0; i < num_of_points; ++i)
+        // {
+        //     geometry_msgs::Point p;
 
-            p.y = (offset)*sin(angles::from_degrees(-searchDegMin_));
-            p.x = (offset)*cos(angles::from_degrees(-searchDegMin_));
-            p.z = 0;
+        //     p.y = (offset)*sin(angles::from_degrees(-searchDegMin_));
+        //     p.x = (offset)*cos(angles::from_degrees(-searchDegMin_));
+        //     p.z = 0;
 
-            offset += delta;
+        //     offset += delta;
 
-            if (offset > maxDistanceLidarSearch_)
-            {
-                break;
-            }
+        //     if (offset > maxDistanceLidarSearch_)
+        //     {
+        //         break;
+        //     }
 
-            line_strip.points.push_back(p);
-        }
+        //     line_strip.points.push_back(p);
+        // }
 
-        offset = globalOffset;
-        for (uint32_t i = 0; i < num_of_points; ++i)
-        {
-            geometry_msgs::Point p;
+        // offset = globalOffset;
+        // for (uint32_t i = 0; i < num_of_points; ++i)
+        // {
+        //     geometry_msgs::Point p;
 
-            p.y = (offset)*sin(angles::from_degrees(-searchDegMax_));
-            p.x = (offset)*cos(angles::from_degrees(-searchDegMax_));
-            p.z = 0;
+        //     p.y = (offset)*sin(angles::from_degrees(-searchDegMax_));
+        //     p.x = (offset)*cos(angles::from_degrees(-searchDegMax_));
+        //     p.z = 0;
 
-            offset += delta;
+        //     offset += delta;
 
-            if (offset > maxDistanceLidarSearch_)
-            {
-                break;
-            }
+        //     if (offset > maxDistanceLidarSearch_)
+        //     {
+        //         break;
+        //     }
 
-            line_strip.points.push_back(p);
-        }
+        //     line_strip.points.push_back(p);
+        // }
 
-        lidar_fov_marker_pub_.publish(line_strip);
+        // lidar_fov_marker_pub_.publish(line_strip);
     }
 
 private:
@@ -1762,7 +1832,7 @@ private:
 
 
     //state and global target
-    FollowerState state_ = FollowerState::IDLE;
+    FollowerState state_ = FollowerState::STOP;
     Person globalTarget;
 
 
@@ -1776,8 +1846,10 @@ private:
     ros::Subscriber laserScanSubscriber_;
     ros::Subscriber imgBgrSubscriber_;
     ros::Subscriber global_map_sub_;
+    ros::Subscriber stop_start_follower_sub_;
 
     // Publisher
+    ros::Publisher is_person_detected_pub_;
     ros::Publisher targets_marker_pub_;
     ros::Publisher global_target_marker_pub_;
     ros::Publisher twistCommandPublisher_;
@@ -1827,6 +1899,7 @@ private:
 
     // following section
 
+    bool startStopFollower_ = true; //stop: false start: true
     float robotRadius_ = 0.3;
     float targetOffset_ = 0.5;
     float angleNotRotate_ = 15; // deg form each side
