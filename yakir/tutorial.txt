@@ -1,0 +1,30 @@
+ssh algo-kobuki@10.185.1.124
+password: cogniCOGNI
+
+
+
+#person follower:
+sudo docker run --runtime nvidia -it --rm --network host --mount type=bind,source=/home/algo-kobuki/depth_imgs/,target=/home/algo-kobuki/depth_imgs/ --env ROS_MASTER_URI=http://10.185.1.124:11311 --env ROS_IP=10.185.1.124  --privileged cogniteam_person_follower:latest bash
+
+git pull https://yakirhuri21Gmail.com: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@github.com/haystack-nimbus/cogniteam-haystack-person-follower.git master
+
+ALL THE SYSTEM:
+roslaunch yakir.launch
+
+#######################################################################################
+#camera
+source /opt/ros/melodic/setup.bash
+roslaunch rs_camera_with_jpeg_level.launch
+
+
+# lidar a2	
+sudo chmod 777 /dev/ttyUSB1
+roslaunch /home/algo-kobuki/lidar_a2_ws/roslaunch rplidar_ros rplidar.launch
+
+
+
+#GMAPPING
+
+
+#copy depth imgs to yakir-laptop
+./copy_depth_imgs.sh
