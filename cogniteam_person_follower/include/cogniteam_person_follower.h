@@ -4,11 +4,11 @@
 #define COGNITEAM_PERSON_FOLLOWER_H
 
 #include <opencv2/core/utility.hpp>
-#include <opencv2/dnn.hpp>
+//#include <opencv2/dnn.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
-#include <opencv2/tracking.hpp>
-#include <opencv2/face.hpp>
+//#include <opencv2/tracking.hpp>
+//#include <opencv2/face.hpp>
 
 #include <ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
@@ -687,43 +687,8 @@ private:
     bool detectFace(const Mat& img, const cv::Rect& personBbox){
         
 
-        return true;
+        return true;        
 
-        // Mat gray = img(personBbox).clone();
-        // cvtColor(gray, gray, COLOR_BGR2GRAY); 
-
-        // vector<Rect> faces;
-        
-        // equalizeHist( gray, gray );
-        // face_cascade_.detectMultiScale( gray, faces, 1.1, 3,0, Size(30, 30) ); 
-
-        // if(  faces.size() > 0 ){
-
-        //     return true;
-        // }      
-
-        // vector< vector<Point2f> > shapes;
-        // if (facemark_->fit(gray,faces,shapes))
-        // {   
-        //     cvtColor(gray, gray, COLOR_GRAY2BGR);        
-
-        //     for ( size_t i = 0; i < faces.size(); i++ )
-        //     {
-        //         cv::rectangle(gray,faces[i],Scalar( 255, 0, 0 ));
-        //     }
-        //     for (unsigned long i=0;i<faces.size();i++){
-        //         for(unsigned long k=0;k<shapes[i].size();k++)
-        //             cv::circle(gray,shapes[i][k],5,cv::Scalar(0,0,255),FILLED);
-        //     }
-
-        //     imwrite("/home/algo-kobuki/depth_imgs/face.jpg", gray);
-
-        //     cerr<<" DEEEEEETECT FACE !!"<<endl;
-
-        //    return true;
-        // }
-
-        return false;
     }
 
     float normalizeLinearSpeed(double distance)
@@ -1522,7 +1487,7 @@ private:
 
             return;
         }
-        
+
         filteredLegs_.legs.clear();
        
 
@@ -1899,8 +1864,8 @@ private:
 
 
     // face detection
-    Ptr<Facemark> facemark_;
-    CascadeClassifier face_cascade_;
+    // Ptr<Facemark> facemark_;
+    // CascadeClassifier face_cascade_;
 
 
 
