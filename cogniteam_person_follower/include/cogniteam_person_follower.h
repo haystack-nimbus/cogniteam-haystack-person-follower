@@ -103,6 +103,11 @@ public:
     {       
 
         ros::NodeHandle nodePrivate("~");
+
+        nodePrivate.param("/person_follower/status", status_, string("INITIALIZING"));
+        nodePrivate.param("/person_follower/person_follower_set_enable", setEnable_, false);  
+
+
         nodePrivate.param("/detection_img/compressed/jpeg_quality", 20);
 
         nodePrivate.param("follow_without_drive", follow_without_drive_, false);
@@ -157,10 +162,7 @@ public:
         global_map_sub_ =
             nodeHandler_.subscribe<nav_msgs::OccupancyGrid>("/map", 1,
                                                      &CogniteamPersonFollower::globalMapCallback, this);
-
-        stop_start_follower_sub_ =
-            nodeHandler_.subscribe<std_msgs::Bool>("/stop_start_follower", 1,
-                                        &CogniteamPersonFollower::stopStartFollowerCallback, this);
+       
 
         // publishers
 
@@ -213,11 +215,16 @@ public:
     ~CogniteamPersonFollower() {}
 
     void run()
-    {
+    {   
+        ros::NodeHandle nodePrivate("~");
+
         std::vector<Person> currentCameraTargets;
 
         while (ros::ok())
-        {
+        {   
+            status_ = "RUNNING";
+            nodePrivate.setParam("/person_follower/status", "RUNNING");
+
             // Check for ros interupts
             ros::spinOnce();
 
@@ -236,11 +243,17 @@ public:
             bgrWorkImg = currentBgrImg_.clone();
             depthImg = curretDepthImg_.clone();
 
+            nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
+            if ( setEnable_ == false) {
 
-            if( startStopFollower_ == false) {
+                nodePrivate.setParam("/person_follower/status", "STOPPED");
 
                 state_ = STOP;
-            } 
+            } else {
+
+                nodePrivate.setParam("/person_follower/status", "RUNNING");
+
+            }
 
             cerr << getState() << endl;
 
@@ -249,13 +262,15 @@ public:
             {
                 case STOP:
                 {   
-                    
-                    if( startStopFollower_ == true ){
-
+                    nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
+                    if( setEnable_ == true ) {
+   
                         state_ = IDLE;
+
                         break;
                     }
 
+                    
                     sendStopCmd();
 
                     // detect with dnn perosns
@@ -843,18 +858,7 @@ private:
         return dist;
     }
 
-    void stopStartFollowerCallback(const std_msgs::Bool::ConstPtr &msg){
-
-        if (msg->data == true){
-
-            startStopFollower_ = true;
-        } 
-        else {
-
-            startStopFollower_ = false;
-        }
-
-    }
+   
 
     void globalMapCallback(const nav_msgs::OccupancyGrid::ConstPtr &msg)
     {
@@ -1834,6 +1838,7 @@ private:
     //state and global target
     FollowerState state_ = FollowerState::STOP;
     Person globalTarget;
+    string status_;
 
 
     string scan_topic_ = "scan_filtered";
@@ -1846,7 +1851,6 @@ private:
     ros::Subscriber laserScanSubscriber_;
     ros::Subscriber imgBgrSubscriber_;
     ros::Subscriber global_map_sub_;
-    ros::Subscriber stop_start_follower_sub_;
 
     // Publisher
     ros::Publisher is_person_detected_pub_;
@@ -1899,7 +1903,7 @@ private:
 
     // following section
 
-    bool startStopFollower_ = true; //stop: false start: true
+    bool setEnable_ = false; //stop: false start: true
     float robotRadius_ = 0.3;
     float targetOffset_ = 0.5;
     float angleNotRotate_ = 15; // deg form each side
