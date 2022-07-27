@@ -106,8 +106,9 @@ public:
 
         nodePrivate.setParam("/person_follower/status", string("INITIALIZING"));
         status_= "INITIALIZING";
-        nodePrivate.param("/person_follower/person_follower_set_enable", setEnable_, false); 
-        nodePrivate.setParam("/person_follower/person_follower_set_enable", false);
+        
+        nodePrivate.setParam("/person_follower/person_follower_set_enable", string("FALSE"));
+        setEnable_ = "FALSE";
 
 
 
@@ -247,7 +248,7 @@ public:
             depthImg = curretDepthImg_.clone();
 
             nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
-            if ( setEnable_ == false) {
+            if ( setEnable_ == "FALSE") {
 
                 nodePrivate.setParam("/person_follower/status", "STOPPED");
                 status_ = "STOPPED";
@@ -268,7 +269,7 @@ public:
                 {   
                     nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
                     
-                    if( setEnable_ == true ) {
+                    if( setEnable_ == "TRUE" ) {
                         cerr<<" yakirrrrr: setEnable_ is true "<<endl;    
                         
                         state_ = IDLE;
@@ -1852,6 +1853,8 @@ private:
     FollowerState state_ = FollowerState::STOP;
     Person globalTarget;
     string status_;
+    string setEnable_ = "FALSE"; //stop: false start: true
+
 
 
     string scan_topic_ = "scan_filtered";
@@ -1916,7 +1919,6 @@ private:
 
     // following section
 
-    bool setEnable_ = false; //stop: false start: true
     float robotRadius_ = 0.3;
     float targetOffset_ = 0.5;
     float angleNotRotate_ = 15; // deg form each side
