@@ -104,8 +104,11 @@ public:
 
         ros::NodeHandle nodePrivate("~");
 
-        nodePrivate.param("/person_follower/status", status_, string("INITIALIZING"));
-        nodePrivate.param("/person_follower/person_follower_set_enable", setEnable_, false);  
+        nodePrivate.setParam("/person_follower/status", string("INITIALIZING"));
+        status_= "INITIALIZING";
+        nodePrivate.param("/person_follower/person_follower_set_enable", setEnable_, false); 
+        nodePrivate.setParam("/person_follower/person_follower_set_enable", false);
+
 
 
         nodePrivate.param("/detection_img/compressed/jpeg_quality", 20);
