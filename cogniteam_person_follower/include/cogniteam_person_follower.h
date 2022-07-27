@@ -283,7 +283,6 @@ public:
                     }
 
                     
-                    sendStopCmd();
 
                     // detect with dnn perosns
                     sensor_msgs::ImagePtr image_msg_detect = cv_bridge::CvImage(std_msgs::Header(), "bgr8", bgrWorkImg).toImageMsg();
