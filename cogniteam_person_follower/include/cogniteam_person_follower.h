@@ -63,7 +63,6 @@
 using namespace std;
 using namespace cv;
 using namespace std::chrono;
-using namespace cv::face;
 
 #define PERSON_CLASS_ID (1)
 #define PERSON_THRESHOLD (0.5)
