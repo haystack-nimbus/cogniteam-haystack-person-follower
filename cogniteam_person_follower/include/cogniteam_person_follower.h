@@ -250,6 +250,7 @@ public:
             if ( setEnable_ == false) {
 
                 nodePrivate.setParam("/person_follower/status", "STOPPED");
+                status_ = "STOPPED";
 
                 state_ = STOP;
             } else {
@@ -266,6 +267,7 @@ public:
                 case STOP:
                 {   
                     nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
+                    
                     if( setEnable_ == true ) {
    
                         state_ = IDLE;
