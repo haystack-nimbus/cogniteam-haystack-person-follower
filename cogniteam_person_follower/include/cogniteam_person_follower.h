@@ -225,9 +225,7 @@ public:
 
         while (ros::ok())
         {   
-            status_ = "RUNNING";
-            nodePrivate.setParam("/person_follower/status", "RUNNING");
-
+           
             // Check for ros interupts
             ros::spinOnce();
 
@@ -246,8 +244,12 @@ public:
             bgrWorkImg = currentBgrImg_.clone();
             depthImg = curretDepthImg_.clone();
 
+            status_ = "RUNNING";
+            nodePrivate.setParam("/person_follower/status", "RUNNING");
+
+
             nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
-	    cerr <<"setEnable "<< setEnable_ << endl;
+	        cerr <<"setEnable "<< setEnable_ << endl;
 
             if ( setEnable_ == false) {
 
