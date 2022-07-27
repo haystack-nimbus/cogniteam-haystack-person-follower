@@ -269,10 +269,15 @@ public:
                     nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
                     
                     if( setEnable_ == true ) {
-   
+                        cerr<<" yakirrrrr: setEnable_ is true "<<endl;    
+                        
                         state_ = IDLE;
 
                         break;
+                    
+                    } else {
+
+                        cerr<<" yakirrrrr: setEnable_ is false "<<endl;   
                     }
 
                     
@@ -298,6 +303,9 @@ public:
                             break;
                         }
                     }
+
+                    state_ = STOP;
+                    break;
 
                 }
                 case IDLE:
