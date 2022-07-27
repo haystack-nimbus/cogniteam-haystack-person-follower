@@ -1244,6 +1244,11 @@ private:
         catch (tf::TransformException ex)
         {
             ROS_ERROR("%s", ex.what());
+
+            if(  target_frame == map_frame_){
+                initMap_ = false;
+                cerr<<" map not recieved "<<endl;
+            }
         }
     }
 
@@ -1513,7 +1518,11 @@ private:
 
     void detectedLegCallback(const leg_tracker::LegArrayPtr &msg)
     {
+        if ( !initMap_ ){
 
+            return;
+        }
+        
         filteredLegs_.legs.clear();
        
 
