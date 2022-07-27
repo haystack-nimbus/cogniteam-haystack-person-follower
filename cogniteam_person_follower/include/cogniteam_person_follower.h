@@ -107,8 +107,8 @@ public:
         nodePrivate.setParam("/person_follower/status", string("INITIALIZING"));
         status_= "INITIALIZING";
         
-        nodePrivate.setParam("/person_follower/person_follower_set_enable", string("FALSE"));
-        setEnable_ = "FALSE";
+        nodePrivate.setParam("/person_follower/person_follower_set_enable", false);
+        setEnable_ = false;
 
 
 
@@ -248,7 +248,9 @@ public:
             depthImg = curretDepthImg_.clone();
 
             nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
-            if ( setEnable_ == "FALSE") {
+	    cerr <<"setEnable "<< setEnable_ << endl;
+
+            if ( setEnable_ == false) {
 
                 nodePrivate.setParam("/person_follower/status", "STOPPED");
                 status_ = "STOPPED";
@@ -268,8 +270,8 @@ public:
                 case STOP:
                 {   
                     nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
-                    
-                    if( setEnable_ == "TRUE" ) {
+                    cerr <<"setEnable "<< setEnable_ << endl;
+                    if( setEnable_ == true ) {
                         cerr<<" yakirrrrr: setEnable_ is true "<<endl;    
                         
                         state_ = IDLE;
@@ -1853,7 +1855,7 @@ private:
     FollowerState state_ = FollowerState::STOP;
     Person globalTarget;
     string status_;
-    string setEnable_ = "FALSE"; //stop: false start: true
+    bool setEnable_ = false; //stop: false start: true
 
 
 
