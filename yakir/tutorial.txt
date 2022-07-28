@@ -28,3 +28,24 @@ roslaunch /home/algo-kobuki/lidar_a2_ws/roslaunch rplidar_ros rplidar.launch
 
 #copy depth imgs to yakir-laptop
 ./copy_depth_imgs.sh
+
+
+#MAGNI
+sudo docker run --runtime nvidia -it --rm --network host --mount type=bind,source=/home/algo-kobuki/depth_imgs/,target=/home/algo-kobuki/depth_imgs/ --env ROS_MASTER_URI=http://10.185.1.124:11311 --env ROS_IP=10.185.1.124  --privileged nimbushaystack/haystack_ws:latest bash
+
+
+#INSTALL IMSIDE IMAGE BASE
+apt-get install ros-melodic-gmapping
+ros-melodic-laser-filters
+
+#RUN THE POINT CLOUD:
+
+1. RUN NIMBUS WITH MAGNI DRIVER
+2. docker: roslaunch haystack navigator_follow.launch (MOVE-BASE + GMAPPING)
+3. docker: roslaunch depth_to_scan depth_to_scan.launch 
+4. docker: roslaunch haystack laser_scan_filter.launch
+
+5. OUTSIDE: roslaunch rplidar.launch
+6. OUTSIDE: roslaunch rs_camera_with_jpeg_level.launch
+
+
