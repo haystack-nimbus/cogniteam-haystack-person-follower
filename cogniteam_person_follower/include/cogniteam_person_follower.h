@@ -108,7 +108,7 @@ public:
         
         nodePrivate.setParam("/person_follower/person_follower_set_enable", false);
         setEnable_ = false;
-
+        //setEnable_ = true;
 
 
         nodePrivate.param("/detection_img/compressed/jpeg_quality", 20);
@@ -251,25 +251,27 @@ public:
             nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
 	        cerr <<"setEnable "<< setEnable_ << endl;
 
-            if ( setEnable_ == false) {
-
+            if(setEnable_ == false) {
                 nodePrivate.setParam("/person_follower/status", "STOPPED");
                 status_ = "STOPPED";
-
                 state_ = STOP;
+                depth_image_sub_.unsubscribe();
+
             } else {
-
                 nodePrivate.setParam("/person_follower/status", "RUNNING");
-
+                // subsribe to depth
+                if(depth_image_sub_.getSubscriber()==NULL) {
+                    depth_image_sub_.subscribe(nodeHandler_, "/camera/aligned_depth_to_color/image_raw", 1);
+                }
             }
 
             cerr << getState() << endl;
-
 
             switch (state_)
             {
                 case STOP:
                 {   
+
                     nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
                     cerr <<"setEnable "<< setEnable_ << endl;
                     if( setEnable_ == true ) {
