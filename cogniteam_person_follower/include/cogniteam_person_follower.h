@@ -1176,7 +1176,7 @@ private:
                 // transform to bas-link
                 cv::Point3d p = cv::Point3d(rayPoint.x, rayPoint.y, 0);
 
-                auto transformedRayPoint = transformFrames(p, base_frame_, scan->header.frame_id);
+                auto transformedRayPoint = transformFrames(p, base_frame_, scan->header.frame_id, scan->header.stamp);
 
                 currentScanPoints_.push_back(cv::Point2d(transformedRayPoint.point.x, transformedRayPoint.point.y));
             }
@@ -1184,14 +1184,14 @@ private:
     }
 
     geometry_msgs::PointStamped transformFrames(
-        Point3d objectPoint3d, string target_frame, string source_Frame)
+        Point3d objectPoint3d, string target_frame, string source_Frame, ros::Time t)
     {
 
         geometry_msgs::PointStamped pointStampedIn;
         geometry_msgs::PointStamped pointStampedOut;
 
         pointStampedIn.header.frame_id = source_Frame;
-        pointStampedIn.header.stamp = ros::Time(0);
+        pointStampedIn.header.stamp = t;
         pointStampedIn.point.x = objectPoint3d.x;
         pointStampedIn.point.y = objectPoint3d.y;
         pointStampedIn.point.z = objectPoint3d.z;
@@ -1507,7 +1507,7 @@ private:
             {
                 //convert the leg to map frame
                 auto legPositionMap = transformFrames(cv::Point3d(leg.position.x, leg.position.y, 0),
-                                                     map_frame_, base_frame_);
+                                                     map_frame_, base_frame_, msg->header.stamp);
 
                 geometry_msgs::PoseStamped leg_pose;   
                 leg_pose.pose.position.x =  legPositionMap.point.x;
