@@ -47,6 +47,7 @@
 #include <ctime>
 #include <chrono>
 #include <limits>
+#include <fstream>
 
 #include <librealsense2/rs.hpp>
 #include <librealsense2/rsutil.h>
@@ -213,9 +214,14 @@ public:
 
         cout<<"Loaded models"<<endl;
 
+        kalmanFilterFile.open("/kalman-filter.csv");
+
     }
 
-    ~CogniteamPersonFollower() {}
+    ~CogniteamPersonFollower() {
+        cout<<"In destructor"<<endl;
+        kalmanFilterFile.close();
+    }
 
     void run()
     {   
@@ -224,8 +230,8 @@ public:
         std::vector<Person> currentCameraTargets;
 
         while (ros::ok())
-        {   
-           
+        {
+
             // Check for ros interupts
             ros::spinOnce();
 
@@ -331,11 +337,18 @@ public:
                     // found target, init global target
                     if (!initGlobalTarget(currentCameraTargets, globalTarget, bgrWorkImg))
                     {
+                        //kalman filter track false
+                        kalmanFilterFile << to_string(ros::Time::now().toSec()) + "," + to_string(globalTarget.location_.point.x) + "," +
+                                        to_string(globalTarget.location_.point.y) + "," + "IDLE" + "," +"0";
                         // cerr << "iiiiiiiinit failed !!!! " << endl;
                         sendStopCmd();
                         state_ = IDLE;
                         break;
                     }
+                    //kalman filter track true
+                    kalmanFilterFile << to_string(ros::Time::now().toSec()) + "," + to_string(globalTarget.location_.point.x) + "," +
+                                        to_string(globalTarget.location_.point.y) + "," + "IDLE" + "," +"1";
+                    
                     bool isBlocked = isBlockedByObstacle(globalTarget, max_dist_obstacle_collision_);
 
                     if (isBlocked)
@@ -378,6 +391,9 @@ public:
                     // found targets, try to update the global target 
                     if (!updateGlobalTarget(currentCameraTargets, globalTarget))
                     {
+                        //kalman filter track false
+                        kalmanFilterFile << to_string(ros::Time::now().toSec()) + "," + to_string(globalTarget.location_.point.x) + "," +
+                                        to_string(globalTarget.location_.point.y) + "," + "FOLLOW" + "," +"0";
 
                         cerr << "ffffffffffffffffffaild update in FOLLOW" << endl;           
 
@@ -387,6 +403,9 @@ public:
 
                         break;
                     }
+                    //kalman filter track true
+                    kalmanFilterFile << to_string(ros::Time::now().toSec()) + "," + to_string(globalTarget.location_.point.x) + "," +
+                                        to_string(globalTarget.location_.point.y) + "," + "FOLLOW" + "," +"1";
 
                     bool isBlocked = isBlockedByObstacle(globalTarget, max_dist_obstacle_collision_);
 
@@ -421,6 +440,9 @@ public:
 
                     if (updateGlobalTargetBylidar(globalTarget))
                     {   
+                        //kalman filter with track true
+                        kalmanFilterFile << to_string(ros::Time::now().toSec()) + "," + to_string(globalTarget.location_.point.x) + "," +
+                                        to_string(globalTarget.location_.point.y) + "," + "FIND_LOST_CAMERA_TARGET_BY_LIDAR" + "," +"1";
 
                         bool isBlocked = isBlockedByObstacle(globalTarget, max_dist_obstacle_collision_);
 
@@ -444,7 +466,9 @@ public:
                         break;
 
                     } else {
-
+                        //kalman filter wit track false
+                        kalmanFilterFile << to_string(ros::Time::now().toSec()) + "," + to_string(globalTarget.location_.point.x) + "," +
+                                        to_string(globalTarget.location_.point.y) + "," + "FIND_LOST_CAMERA_TARGET_BY_LIDAR" + "," +"0";
                         cerr<<" failed to track with lidar !!!!!!!!!!!!!!!!!!!!!111 "<<endl;
                     }
                     // leg target not work, give another chance
@@ -1945,6 +1969,9 @@ private:
 
     /// tests
     int globalCountD_ = 0;
+
+    //File for Kalman Filter algorithm analysis
+    ofstream kalmanFilterFile;
 };
 
 #endif
