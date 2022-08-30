@@ -201,12 +201,17 @@ public:
         detection_pub_ = it.advertise("/detection_img", 1);
 
         debug_map_img_pub_ = it.advertise("/debug_map", 1);
+        
+        enable_disable_leg_detector_pub_ = nodeHandler_.advertise<std_msgs::Bool>("/enable_disable_leg_detector", 10);
 
         ///ros params
 
           
 
         detectnetWrapper.LoadModel(); 
+
+        startDetection_ = high_resolution_clock::now();
+
 
         cout<<"Loaded models"<<endl;
 
@@ -290,43 +295,57 @@ public:
             {
                 case STOP:
                 {   
-
+                    std_msgs::Bool msg;
+                    msg.data = false;
+                    enable_disable_leg_detector_pub_.publish(msg);
+                      
                     nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
                     cerr <<"setEnable "<< setEnable_ << endl;
                     if( setEnable_ == true ) {
-                        cerr<<" yakirrrrr: setEnable_ is true "<<endl;    
-                        
+                       
                         state_ = IDLE;
+
+                        std_msgs::Bool msg;
+                        msg.data = true;
+                        enable_disable_leg_detector_pub_.publish(msg);
 
                         break;
                     
                     } else {
 
-                        cerr<<" yakirrrrr: setEnable_ is false "<<endl;   
                     }
 
+                    auto endDetect = high_resolution_clock::now();
+                    auto durationFromLastCalc = duration_cast<seconds>(endDetect - 
+                        startDetection_).count();
+                    //try to detect every 3 seconds    
+                    if( durationFromLastCalc > 3.0){
+
+                        // detect with dnn perosns
+                        sensor_msgs::ImagePtr image_msg_detect = cv_bridge::CvImage(std_msgs::Header(), "bgr8", bgrWorkImg).toImageMsg();
+                        detectnetWrapper.Detect(image_msg_detect);             
+
+                        // loop over detection and create targets array of persosn
+                        for (auto detection : detectnetWrapper.detection2DArray.detections)
+                        {    
+
+                            float score = detection.results[0].score;
+                            if( score < PERSON_THRESHOLD){
+                                continue;
+                            }
+                            if ((detection.results[0].id == PERSON_CLASS_ID) )
+                            {   
+                                publishPersonDetected();
+
+                                state_ = STOP;
+                                break;
+                            }
+                        }
+
+                        startDetection_ = endDetect;
+
+                    }
                     
-
-                    // detect with dnn perosns
-                    sensor_msgs::ImagePtr image_msg_detect = cv_bridge::CvImage(std_msgs::Header(), "bgr8", bgrWorkImg).toImageMsg();
-                    detectnetWrapper.Detect(image_msg_detect);             
-
-                    // loop over detection and create targets array of persosn
-                    for (auto detection : detectnetWrapper.detection2DArray.detections)
-                    {    
-
-                        float score = detection.results[0].score;
-                        if( score < PERSON_THRESHOLD){
-                            continue;
-                        }
-                        if ((detection.results[0].id == PERSON_CLASS_ID) )
-                        {   
-                            publishPersonDetected();
-
-                            state_ = STOP;
-                            break;
-                        }
-                    }
 
                     state_ = STOP;
                     break;
@@ -1878,11 +1897,11 @@ private:
     ros::Publisher filtered_legs_pub_;
     ros::Publisher lidar_obstacles_pub_;
     ros::Publisher target_rectangle_pub_;
+    ros::Publisher enable_disable_leg_detector_pub_;
     image_transport::Publisher debug_depth_pub_;
     image_transport::Publisher detection_pub_;
 
     image_transport::Publisher debug_map_img_pub_;
-
 
     // face detection
     // Ptr<Facemark> facemark_;
@@ -1960,6 +1979,9 @@ private:
     // obstacle section
 
     vector<cv::Point2d> currentScanPoints_;
+
+    high_resolution_clock::time_point startDetection_;
+
 
 
     /// tests

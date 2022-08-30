@@ -38,7 +38,7 @@
 
 #include <visualization_msgs/Marker.h>
 #include <sensor_msgs/LaserScan.h>
-
+#include <std_msgs/Bool.h>
 // OpenCV
 #include <opencv2/core/core.hpp>
 #include <opencv2/ml/ml.hpp>
@@ -103,6 +103,7 @@ public:
     // ROS subscribers + publishers
     scan_sub_ =  nh_.subscribe(scan_topic, 10, &DetectLegClusters::laserCallback, this);
     markers_pub_ = nh_.advertise<visualization_msgs::Marker>("visualization_marker", 20);
+    enable_disable_sub_ = nh_.subscribe("/enable_disable_leg_detector", 10, &DetectLegClusters::enableDisableCallback, this);
     detected_leg_clusters_pub_ = nh_.advertise<leg_tracker::LegArray>("detected_leg_clusters", 20);
   }
 
@@ -123,6 +124,7 @@ private:
   ros::Publisher markers_pub_;
   ros::Publisher detected_leg_clusters_pub_;
   ros::Subscriber scan_sub_;
+  ros::Subscriber enable_disable_sub_;
 
   std::string fixed_frame_;
   
@@ -135,6 +137,15 @@ private:
 
   int num_prev_markers_published_;
 
+  bool enable_leg_detector_ = false;
+
+  void enableDisableCallback(const std_msgs::Bool::ConstPtr& msg) {
+    if(msg->data == true) {
+      enable_leg_detector_ = true;
+    } 
+    else
+      enable_leg_detector_ = false;
+  }
 
   /**
   * @brief Clusters the scan according to euclidian distance, 
@@ -143,7 +154,10 @@ private:
   * Called every time a laser scan is published.
   */
   void laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
-  {         
+  { 
+    if(!enable_leg_detector_) {
+      return;
+    }
     laser_processor::ScanProcessor processor(*scan); 
     processor.splitConnected(cluster_dist_euclid_);        
     processor.removeLessThan(min_points_per_cluster_);    
