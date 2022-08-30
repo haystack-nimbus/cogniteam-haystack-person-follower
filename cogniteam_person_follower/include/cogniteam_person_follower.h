@@ -146,25 +146,22 @@ public:
         nodePrivate.param<string>("cmd_vel_topic", cmd_vel_topic_, string("cmd_vel")); 
 
         depth_image_sub_.subscribe(nodeHandler_, "/camera/aligned_depth_to_color/image_raw", 1);
-
-
         depth_image_sub_.registerCallback(&CogniteamPersonFollower::depthCallback, this);
 
         info_sub_.subscribe(nodeHandler_, "/camera/aligned_depth_to_color/camera_info", 1);
         info_sub_.registerCallback(&CogniteamPersonFollower::cameraInfoCallback, this);
 
-        imgBgrSubscriber_ = nodeHandler_.subscribe("/camera/color/image_raw", 1,
-                                                   &CogniteamPersonFollower::imageCallback, this);
+        imgBgrSubscriber_.subscribe(nodeHandler_,"/camera/color/image_raw", 1);
+        imgBgrSubscriber_.registerCallback(&CogniteamPersonFollower::imageCallback, this);
 
-        detected_leg_clusters_sub_ = nodeHandler_.subscribe("detected_leg_clusters", 1,
-                                                            &CogniteamPersonFollower::detectedLegCallback, this);
+        detected_leg_clusters_sub_.subscribe(nodeHandler_,"detected_leg_clusters", 1);
+        detected_leg_clusters_sub_.registerCallback(&CogniteamPersonFollower::detectedLegCallback, this);
 
-        laserScanSubscriber_ = nodeHandler_.subscribe(scan_topic_, 1,
-                                                      &CogniteamPersonFollower::scanCallback, this);
+        laserScanSubscriber_.subscribe(nodeHandler_,scan_topic_, 1);
+        laserScanSubscriber_.registerCallback(&CogniteamPersonFollower::scanCallback, this);
 
-        global_map_sub_ =
-            nodeHandler_.subscribe<nav_msgs::OccupancyGrid>("/map", 1,
-                                                     &CogniteamPersonFollower::globalMapCallback, this);
+        global_map_sub_.subscribe(nodeHandler_, "/map", 1);
+        global_map_sub_.registerCallback(&CogniteamPersonFollower::globalMapCallback, this);
        
 
         // publishers
@@ -256,12 +253,34 @@ public:
                 status_ = "STOPPED";
                 state_ = STOP;
                 depth_image_sub_.unsubscribe();
+                info_sub_.unsubscribe();
+                imgBgrSubscriber_.unsubscribe();
+                detected_leg_clusters_sub_.unsubscribe();
+                laserScanSubscriber_.unsubscribe();
+                global_map_sub_.unsubscribe();
 
             } else {
                 nodePrivate.setParam("/person_follower/status", "RUNNING");
                 // subsribe to depth
                 if(depth_image_sub_.getSubscriber()==NULL) {
                     depth_image_sub_.subscribe(nodeHandler_, "/camera/aligned_depth_to_color/image_raw", 1);
+                }
+                if(info_sub_.getSubscriber()==NULL) {
+                    info_sub_.subscribe(nodeHandler_, "/camera/aligned_depth_to_color/camera_info", 1);
+                }
+                if(imgBgrSubscriber_.getSubscriber()==NULL) {
+                    imgBgrSubscriber_.subscribe(nodeHandler_,"/camera/color/image_raw", 1);
+
+                }
+                if(detected_leg_clusters_sub_.getSubscriber()==NULL) {
+                    detected_leg_clusters_sub_.subscribe(nodeHandler_,"detected_leg_clusters", 1);
+                }
+                if(laserScanSubscriber_.getSubscriber()==NULL) {
+                    laserScanSubscriber_.subscribe(nodeHandler_,scan_topic_, 1);
+                }
+
+                if(global_map_sub_.getSubscriber()==NULL) {
+                    global_map_sub_.subscribe(nodeHandler_, "/map", 1);
                 }
             }
 
@@ -1841,10 +1860,10 @@ private:
     // Subscriber
     message_filters::Subscriber<sensor_msgs::Image> depth_image_sub_;
     message_filters::Subscriber<sensor_msgs::CameraInfo> info_sub_;
-    ros::Subscriber detected_leg_clusters_sub_;
-    ros::Subscriber laserScanSubscriber_;
-    ros::Subscriber imgBgrSubscriber_;
-    ros::Subscriber global_map_sub_;
+    message_filters::Subscriber<leg_tracker::LegArray> detected_leg_clusters_sub_;
+    message_filters::Subscriber<sensor_msgs::LaserScan>laserScanSubscriber_;
+    message_filters::Subscriber<sensor_msgs::Image> imgBgrSubscriber_;
+    message_filters::Subscriber<nav_msgs::OccupancyGrid> global_map_sub_;
 
     // Publisher
     ros::Publisher is_person_detected_pub_;
