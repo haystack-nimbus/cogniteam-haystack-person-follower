@@ -259,7 +259,6 @@ public:
                 state_ = STOP;
                 depth_image_sub_.unsubscribe();
                 info_sub_.unsubscribe();
-                imgBgrSubscriber_.unsubscribe();
                 detected_leg_clusters_sub_.unsubscribe();
                 laserScanSubscriber_.unsubscribe();
                 global_map_sub_.unsubscribe();
@@ -272,10 +271,6 @@ public:
                 }
                 if(info_sub_.getSubscriber()==NULL) {
                     info_sub_.subscribe(nodeHandler_, "/camera/aligned_depth_to_color/camera_info", 1);
-                }
-                if(imgBgrSubscriber_.getSubscriber()==NULL) {
-                    imgBgrSubscriber_.subscribe(nodeHandler_,"/camera/color/image_raw", 1);
-
                 }
                 if(detected_leg_clusters_sub_.getSubscriber()==NULL) {
                     detected_leg_clusters_sub_.subscribe(nodeHandler_,"detected_leg_clusters", 1);
@@ -345,8 +340,7 @@ public:
                         startDetection_ = endDetect;
 
                     }
-                    
-
+                    ros::Duration(1).sleep();
                     state_ = STOP;
                     break;
 
