@@ -226,22 +226,19 @@ public:
         std::vector<Person> currentCameraTargets;
 
         while (ros::ok())
-        {   
-           
+        {              
             // Check for ros interupts
             ros::spinOnce();
 
-            if (!cameraInfoInited_ || !bgrInited_)
+            if (!cameraInfoInited_ || !bgrInited_ ||
+                !currentBgrImg_.data || !curretDepthImg_.data)
             {
-                cerr << " camera info NULL" << endl;
-                continue;
-            }
+                cerr << " camera data NULL" << endl;
+                ros::Duration(1).sleep();
 
-            if (!currentBgrImg_.data || !curretDepthImg_.data)
-            {
-                cerr << " imgs data NULL" << endl;
                 continue;
             }
+          
 
             bgrWorkImg = currentBgrImg_.clone();
             depthImg = curretDepthImg_.clone();
