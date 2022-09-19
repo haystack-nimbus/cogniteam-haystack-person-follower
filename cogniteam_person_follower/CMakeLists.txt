@@ -25,6 +25,8 @@ find_package(catkin REQUIRED COMPONENTS
   visualization_msgs  
 
   leg_tracker
+
+  pcl_ros
   
 
 )
@@ -55,6 +57,12 @@ catkin_package(
  DEPENDS OpenCV
 #  DEPENDS system_lib
 )
+
+
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
+
 
 ###########
 ## Build ##

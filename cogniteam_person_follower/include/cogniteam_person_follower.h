@@ -56,6 +56,11 @@
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <geometry_msgs/TransformStamped.h>
 
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl/conversions.h>
+
 #include <leg_tracker/LegArray.h>
 
 #include "../include/detectnet.h"
@@ -108,7 +113,10 @@ public:
         
         nodePrivate.setParam("/person_follower/person_follower_set_enable", false);
         setEnable_ = false;
-        //setEnable_ = true;
+        
+        // nodePrivate.setParam("/person_follower/person_follower_set_enable", true);
+        // setEnable_ = true;
+
 
 
         nodePrivate.param("/detection_img/compressed/jpeg_quality", 20);
@@ -137,7 +145,7 @@ public:
 
         nodePrivate.param("max_dist_current_global_and_prev_global_m", max_dist_current_global_and_prev_global_m_, (float)1.5);  
 
-        nodePrivate.param("max_dist_obstacle_collision", max_dist_obstacle_collision_, (float)0.2);
+        nodePrivate.param("max_dist_obstacle_collision", max_dist_obstacle_collision_, (float)0.6);
 
         nodePrivate.param<string>("base_frame", base_frame_, string("base_footprint"));            
 
@@ -160,6 +168,9 @@ public:
         laserScanSubscriber_.subscribe(nodeHandler_,scan_topic_, 1);
         laserScanSubscriber_.registerCallback(&CogniteamPersonFollower::scanCallback, this);
 
+        cameraLaserScanSubscriber_.subscribe(nodeHandler_, camera_scan_topic_, 1);
+        cameraLaserScanSubscriber_.registerCallback(&CogniteamPersonFollower::cameraScanCallback, this);
+
         global_map_sub_.subscribe(nodeHandler_, "/map", 1);
         global_map_sub_.registerCallback(&CogniteamPersonFollower::globalMapCallback, this);
        
@@ -174,7 +185,10 @@ public:
 
         filtered_legs_pub_ = nodeHandler_.advertise<visualization_msgs::MarkerArray>("/filtered_legs", 10);
 
-        lidar_obstacles_pub_ = nodeHandler_.advertise<visualization_msgs::MarkerArray>("/lidar_obstacles", 10);
+        //lidar_obstacles_pub_ = nodeHandler_.advertise<visualization_msgs::MarkerArray>("/lidar_obstacles", 10);
+
+        pubPclLaser_ = nodeHandler_.advertise<pcl::PointCloud<pcl::PointXYZRGB> >
+		 ("/scans_obstacles", 1, true); 
 
         is_person_detected_pub_ = nodeHandler_.advertise<std_msgs::Bool>("/is_person_detected", 10);
 
@@ -248,7 +262,6 @@ public:
 
 
             nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
-	        cerr <<"setEnable "<< setEnable_ << endl;
 
             if(setEnable_ == false) {
                 nodePrivate.setParam("/person_follower/status", "STOPPED");
@@ -276,6 +289,10 @@ public:
                     laserScanSubscriber_.subscribe(nodeHandler_,scan_topic_, 1);
                 }
 
+                if(cameraLaserScanSubscriber_.getSubscriber()==NULL) {
+                    cameraLaserScanSubscriber_.subscribe(nodeHandler_, camera_scan_topic_, 1);
+                }
+
                 if(global_map_sub_.getSubscriber()==NULL) {
                     global_map_sub_.subscribe(nodeHandler_, "/map", 1);
                 }
@@ -292,7 +309,6 @@ public:
                     enable_disable_leg_detector_pub_.publish(msg);
                       
                     nodePrivate.getParam("/person_follower/person_follower_set_enable", setEnable_);
-                    cerr <<"setEnable "<< setEnable_ << endl;
                     if( setEnable_ == true ) {
                        
                         state_ = IDLE;
@@ -351,7 +367,7 @@ public:
                     if (currentCameraTargets.size() == 0)
                     {
 
-                        cerr << " no depth currentCameraTargets IDLE " << endl;
+                        // cerr << " no depth currentCameraTargets IDLE " << endl;
                         sendStopCmd();
                         state_ = IDLE;
                         break;
@@ -387,20 +403,17 @@ public:
                 case FOLLOW:
                 {        
                     currentCameraTargets = collectCameraTargets(bgrWorkImg, depthImg);
-                    cerr<<"1111111111111111111111111111111 "<<endl;
                     /// there is no targets
                     if (currentCameraTargets.size() == 0)
                     {
-                        cerr<<"2222222222222222222222222222222222222 "<<endl;
 
-                        cerr << " no depth currentCameraTargets FOLLOW " << endl;
+                        // cerr << " no depth currentCameraTargets FOLLOW " << endl;
                     
                         state_ = FIND_LOST_CAMERA_TARGET_BY_LIDAR;
 
                         break;
                     }
 
-                    cerr<<"33333333333333333333333333333333333333333 "<<endl;
 
                 
                     
@@ -408,7 +421,7 @@ public:
                     if (!updateGlobalTarget(currentCameraTargets, globalTarget))
                     {
 
-                        cerr << "ffffffffffffffffffaild update in FOLLOW" << endl;           
+                        // cerr << "ffffffffffffffffffaild update in FOLLOW" << endl;           
 
                     
 
@@ -444,7 +457,7 @@ public:
                 case FIND_LOST_CAMERA_TARGET_BY_LIDAR:
                 {   
 
-                    cerr<<" inside FIND_LOST_CAMERA_TARGET_BY_LIDAR "<<endl;
+                    // cerr<<" inside FIND_LOST_CAMERA_TARGET_BY_LIDAR "<<endl;
 
                     countFindWithLidar_++;
 
@@ -456,7 +469,7 @@ public:
                         if(isBlocked) {
                             
                             sendStopCmd();
-                            break;
+                            // break;
                             // sendStopCmd();
                             // state_ = FOLLOW;
                             // break;
@@ -903,10 +916,10 @@ private:
         initMap_ = true;
     }
 
-    bool isBlockedByObstacle(const Person &globalTarget, float maxDistFromObstacleCollision = 0.5)
+    bool isBlockedByObstacle(const Person &globalTarget, float maxDistFromObstacleCollision = 0.6)
     {   
 
-        vector<cv::Point2d> currentLidarObstacleBaseLink;
+        vector<cv::Point2d> currentCameraLidarObstacleBaseLink;
 
         visualization_msgs::MarkerArray Markerarr;
 
@@ -931,8 +944,8 @@ private:
         pTopLeft.x = pLeft.x + globalTarget.distanceM_;
         pRight.z = 0;
 
-        int count = 0;
 
+        //check collision by  lidar obstacles
         for (int i = 0; i < currentScanPoints_.size(); i++)
         {
             /// check collision
@@ -946,47 +959,76 @@ private:
                 // the obstacle inside the area, check distance
                 float distFromRbot = distanceCalculate(pLaser, cv::Point2d(0,0));
 
-                //cout<<"IN isBlockedByObstacle before comparing the current distance: "<<distFromRbot<<" with the max"<<endl;
                 
-                if( distFromRbot <= maxDistFromObstacleCollision && distFromRbot > 0.3 ) {
-                    cerr<<"Detected Obstacle"<<endl;
+                if( distFromRbot <= maxDistFromObstacleCollision && distFromRbot > 0.2 ) {
 
-                    currentLidarObstacleBaseLink.push_back(pLaser);
-
-                    visualization_msgs::Marker marker;
-                    marker.header.frame_id = base_frame_;
-                    marker.header.stamp = ros::Time::now();
-                    marker.ns = "lidar_obstacles";
-                    marker.id = count;
-
-                    marker.lifetime = ros::Duration(0.1);
-
-                    marker.type = visualization_msgs::Marker::SPHERE;
-                    marker.pose.position.x = pLaser.x;
-                    marker.pose.position.y = pLaser.y;
-                    marker.pose.position.z = 0;
-                    marker.pose.orientation.x = 0.0;
-                    marker.pose.orientation.y = 0.0;
-                    marker.pose.orientation.z = 0.0;
-                    marker.pose.orientation.w = 1.0;
-                    marker.scale.x = 0.3; 
-                    marker.scale.y = 0.3; 
-                    marker.scale.z = 0.3;
-                    marker.color.a = 1.0;
-                    marker.color.r = 1.0;
-                    marker.color.g = 0.411;
-                    marker.color.b = 0.705;
-
-                    Markerarr.markers.push_back(marker);
-
-                    lidar_obstacles_pub_.publish(Markerarr);
+                    currentCameraLidarObstacleBaseLink.push_back(pLaser);
 
                     return true;
+                           
+                }
+
+            }
+        }
+
+        // check collision by  camera obstacles
+        
+        for (int i = 0; i < currentCameraScanPoints_.size(); i++)
+        {
+            /// check collision
+            auto pLaser = currentCameraScanPoints_[i];
+            
+            if(pLaser.y > pLeft.y
+                && pLaser.y < pRight.y
+                && pLaser.x > pLeft.x 
+                && pLaser.x < pTopLeft.x) {
+                
+                // the obstacle inside the area, check distance
+                float distFromRbot = distanceCalculate(pLaser, cv::Point2d(0,0));
+
+                //cout<<"IN isBlockedByObstacle before comparing the current distance: "<<distFromRbot<<" with the max"<<endl;
+                
+                if( distFromRbot <= maxDistFromObstacleCollision && distFromRbot > 0.2 ) {
+                    cerr<<"Detected Obstacle camera"<<endl;
+
+                    currentCameraLidarObstacleBaseLink.push_back(pLaser);   
+
+                    return true;                
                 }
 
                 // count++;
             }
         }
+
+        // if ( currentCameraLidarObstacleBaseLink.size() > 0 ){
+           
+        //     pcl::PointCloud<pcl::PointXYZRGB> cloud;
+        //     cloud.header.frame_id = base_frame_;
+
+
+        //     for(int i = 0; i < currentCameraLidarObstacleBaseLink.size(); i++ ){
+
+
+        //         pcl::PointXYZRGB pRGB;
+        //         pRGB.x =   currentCameraLidarObstacleBaseLink[i].x;
+        //         pRGB.y =   currentCameraLidarObstacleBaseLink[i].y;
+        //         pRGB.z =    0.0;
+        //         uint8_t r = 255;
+        //         uint8_t g = 0;
+        //         uint8_t b = 255;
+
+        //         uint32_t rgb = ((uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b);
+        //         pRGB.rgb = *reinterpret_cast<float*>(&rgb);
+
+        //         cloud.points.push_back(pRGB); 
+        //     }
+            
+        //     pubPclLaser_.publish(cloud);
+
+        //     return true;
+
+        // }
+        
         return false;
     }
 
@@ -1146,7 +1188,6 @@ private:
                 return global_distance;
             } else {
 
-                cerr<<" didnt found good pixel with depth "<<endl;
             }
 
             return -1;
@@ -1202,7 +1243,7 @@ private:
                 cv::Point2d rayPoint((scan->ranges[i] * cos(ray_angle)),
                                      (scan->ranges[i] * sin(ray_angle)));
 
-                // transform to bas-link
+                // transform to base_frame
                 cv::Point3d p = cv::Point3d(rayPoint.x, rayPoint.y, 0);
 
                 auto transformedRayPoint = transformFrames(p, base_frame_, scan->header.frame_id, scan->header.stamp);
@@ -1211,6 +1252,53 @@ private:
             }
         }
     }
+
+    void cameraScanCallback(const sensor_msgs::LaserScan::ConstPtr &scan)
+    {
+
+        // pcl::PointCloud<pcl::PointXYZRGB> cloud;
+        // cloud.header.frame_id = base_frame_;
+
+        currentCameraScanPoints_.clear();
+
+        for (double i = 0; i < scan->ranges.size(); i++)
+        {
+
+            if (isinf(scan->ranges[i]) == false)
+            {
+
+                double ray_angle = scan->angle_min + (i * scan->angle_increment);
+
+                cv::Point2d rayPoint((scan->ranges[i] * cos(ray_angle)),
+                                     (scan->ranges[i] * sin(ray_angle)));
+
+                // transform to base-frame
+                cv::Point3d p = cv::Point3d(rayPoint.x, rayPoint.y, 0);
+
+                auto transformedRayPoint = transformFrames(p, base_frame_, scan->header.frame_id, scan->header.stamp);
+
+                currentCameraScanPoints_.push_back(cv::Point2d(transformedRayPoint.point.x, transformedRayPoint.point.y));
+
+                // pcl::PointXYZRGB pRGB;
+                // pRGB.x =   transformedRayPoint.point.x;
+                // pRGB.y =   transformedRayPoint.point.y;
+                // pRGB.z =    0.0;
+                // uint8_t r = 255;
+                // uint8_t g = 0;
+                // uint8_t b = 255;
+
+                // uint32_t rgb = ((uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b);
+                // pRGB.rgb = *reinterpret_cast<float*>(&rgb);
+
+                // cloud.points.push_back(pRGB); 
+            }
+        }
+
+        // pubPclLaser_.publish(cloud);
+
+
+    }
+
 
     geometry_msgs::PointStamped transformFrames(
         Point3d objectPoint3d, string target_frame, string source_Frame, ros::Time t)
@@ -1461,7 +1549,6 @@ private:
         float minDist = std::numeric_limits<float>::max();
         float index = -1;
 
-        cerr<<" filteredLegs_.legs.size() "<<filteredLegs_.legs.size()<<endl;
 
         for (int i = 0; i < filteredLegs_.legs.size(); i++)
         {
@@ -1865,13 +1952,17 @@ private:
 
 
     string scan_topic_ = "scan_filtered";
+    string camera_scan_topic_ = "scan_from_shallow_cloud";
+
     string cmd_vel_topic_ = "cmd_vel";
 
     // Subscriber
     message_filters::Subscriber<sensor_msgs::Image> depth_image_sub_;
     message_filters::Subscriber<sensor_msgs::CameraInfo> info_sub_;
     message_filters::Subscriber<leg_tracker::LegArray> detected_leg_clusters_sub_;
-    message_filters::Subscriber<sensor_msgs::LaserScan>laserScanSubscriber_;
+    message_filters::Subscriber<sensor_msgs::LaserScan> laserScanSubscriber_;
+    message_filters::Subscriber<sensor_msgs::LaserScan> cameraLaserScanSubscriber_;
+
     message_filters::Subscriber<sensor_msgs::Image> imgBgrSubscriber_;
     message_filters::Subscriber<nav_msgs::OccupancyGrid> global_map_sub_;
 
@@ -1889,6 +1980,7 @@ private:
     ros::Publisher lidar_obstacles_pub_;
     ros::Publisher target_rectangle_pub_;
     ros::Publisher enable_disable_leg_detector_pub_;
+    ros::Publisher pubPclLaser_;
     image_transport::Publisher debug_depth_pub_;
     image_transport::Publisher detection_pub_;
 
@@ -1970,6 +2062,8 @@ private:
     // obstacle section
 
     vector<cv::Point2d> currentScanPoints_;
+
+    vector<cv::Point2d> currentCameraScanPoints_;
 
     high_resolution_clock::time_point startDetection_;
 
