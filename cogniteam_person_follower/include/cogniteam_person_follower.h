@@ -193,7 +193,9 @@ public:
         is_person_detected_pub_ = nodeHandler_.advertise<std_msgs::Bool>("/is_person_detected", 10);
 
 
-
+        // timer 
+        obstaclesTimer_ = nodeHandler_.createTimer(ros::Rate(20), 
+                &CogniteamPersonFollower::obstaclesTimerCallback, this);
 
         twistCommandPublisher_ = 
             nodeHandler_.advertise<geometry_msgs::Twist>(cmd_vel_topic_, 1, false);
@@ -388,10 +390,10 @@ public:
                         sendStopCmd();
                         state_ = FOLLOW;
                         break;
-                        // sendCmdVel(globalTarget, 1.0, true); 
                         cout<<"Blocked by an obstacle when in IDLE"<<endl;        
                     }
-                    else {
+                    else 
+                    {
                         sendCmdVel(globalTarget);
                     }
 
@@ -420,10 +422,7 @@ public:
                     // found targets, try to update the global target 
                     if (!updateGlobalTarget(currentCameraTargets, globalTarget))
                     {
-
-                        // cerr << "ffffffffffffffffffaild update in FOLLOW" << endl;           
-
-                    
+              
 
                         state_ = FIND_LOST_CAMERA_TARGET_BY_LIDAR;
 
@@ -439,7 +438,6 @@ public:
                         state_ = FOLLOW;
                         
                         break;
-                        // sendCmdVel(globalTarget, 1.0, true);
                     
                     } else {
                         sendCmdVel(globalTarget);
@@ -469,11 +467,7 @@ public:
                         if(isBlocked) {
                             
                             sendStopCmd();
-                            // break;
-                            // sendStopCmd();
-                            // state_ = FOLLOW;
-                            // break;
-
+                        
                         } else {
                             sendCmdVel(globalTarget);
                         }
@@ -519,11 +513,101 @@ public:
 
             publishGlobalTargetMarker(globalTarget);
 
-            publishDepthImg();
         }
     }
 
 private:
+
+    void obstaclesTimerCallback(const ros::TimerEvent&) {
+
+        float MaxRange = 0.5;
+
+        vector<cv::Point2d> currentCameraLidarObstacleBaseLink;
+
+        visualization_msgs::MarkerArray Markerarr;
+
+
+        geometry_msgs::Point pLeft;
+        pLeft.y = -robotRadius_;
+        pLeft.x = 0;
+        pLeft.z = 0;
+
+        geometry_msgs::Point pRight;
+        pRight.y = robotRadius_;
+        pRight.x = 0;
+        pRight.z = 0;
+
+        geometry_msgs::Point pTopRight;
+        pTopRight.y = pRight.y;
+        pTopRight.x = pRight.x + MaxRange;
+        pRight.z = 0;
+
+        geometry_msgs::Point pTopLeft;
+        pTopLeft.y = pLeft.y;
+        pTopLeft.x = pLeft.x + MaxRange;
+        pRight.z = 0;
+
+
+        //check collision by  lidar obstacles
+        for (int i = 0; i < currentScanPoints_.size(); i++)
+        {
+            /// check collision
+            auto pLaser = currentScanPoints_[i];
+            
+            if(pLaser.y > pLeft.y
+                && pLaser.y < pRight.y
+                && pLaser.x > pLeft.x 
+                && pLaser.x < pTopLeft.x) {
+                
+                // the obstacle inside the area, check distance
+                float distFromRbot = distanceCalculate(pLaser, cv::Point2d(0,0));
+
+                if( distFromRbot <= 0.6 && distFromRbot > 0.2 ) {
+
+                    currentCameraLidarObstacleBaseLink.push_back(pLaser);
+
+                    sendStopCmd();
+                    return ;
+                           
+                }
+
+            }
+        }
+
+        // check collision by  camera obstacles
+        
+        int countCameraObs = 0.0;
+        for (int i = 0; i < currentCameraScanPoints_.size(); i++)
+        {
+            /// check collision
+            auto pLaser = currentCameraScanPoints_[i];
+            
+            if(pLaser.y > pLeft.y
+                && pLaser.y < pRight.y
+                && pLaser.x > pLeft.x 
+                && pLaser.x < pTopLeft.x) {
+                
+                // the obstacle inside the area, check distance
+                float distFromRbot = distanceCalculate(pLaser, cv::Point2d(0,0));
+
+                //cout<<"IN isBlockedByObstacle before comparing the current distance: "<<distFromRbot<<" with the max"<<endl;
+                
+                if( distFromRbot <= 0.6 && distFromRbot > 0.2 ) {
+
+                    currentCameraLidarObstacleBaseLink.push_back(pLaser);
+                    countCameraObs++;                           
+                }              
+
+            }
+        }
+
+        if(countCameraObs > 30 ){
+
+            sendStopCmd();
+            return ;
+        }  
+    }
+
 
     void publishPersonDetected(){
 
@@ -959,8 +1043,7 @@ private:
                 // the obstacle inside the area, check distance
                 float distFromRbot = distanceCalculate(pLaser, cv::Point2d(0,0));
 
-                
-                if( distFromRbot <= maxDistFromObstacleCollision && distFromRbot > 0.2 ) {
+                if( distFromRbot <= 0.6 && distFromRbot > 0.2 ) {
 
                     currentCameraLidarObstacleBaseLink.push_back(pLaser);
 
@@ -973,6 +1056,7 @@ private:
 
         // check collision by  camera obstacles
         
+        int countCameraObs = 0.0;
         for (int i = 0; i < currentCameraScanPoints_.size(); i++)
         {
             /// check collision
@@ -988,20 +1072,24 @@ private:
 
                 //cout<<"IN isBlockedByObstacle before comparing the current distance: "<<distFromRbot<<" with the max"<<endl;
                 
-                if( distFromRbot <= maxDistFromObstacleCollision && distFromRbot > 0.2 ) {
-                    cerr<<"Detected Obstacle camera"<<endl;
+                if( distFromRbot <= 0.6 && distFromRbot > 0.2 ) {
 
-                    currentCameraLidarObstacleBaseLink.push_back(pLaser);   
+                    currentCameraLidarObstacleBaseLink.push_back(pLaser);
+                    countCameraObs++;                           
+                }              
 
-                    return true;                
-                }
-
-                // count++;
             }
+        }
+
+        cerr<<" countCameraObs "<<countCameraObs<<endl;
+        if(countCameraObs > 30 ){
+
+            return true;
         }
 
         // if ( currentCameraLidarObstacleBaseLink.size() > 0 ){
            
+        //    cerr<<" OBBBBBBBBBBBBBBBBBBBBBBBBBBBBBST "<<currentCameraLidarObstacleBaseLink.size()<<endl;
         //     pcl::PointCloud<pcl::PointXYZRGB> cloud;
         //     cloud.header.frame_id = base_frame_;
 
@@ -1014,8 +1102,8 @@ private:
         //         pRGB.y =   currentCameraLidarObstacleBaseLink[i].y;
         //         pRGB.z =    0.0;
         //         uint8_t r = 255;
-        //         uint8_t g = 0;
-        //         uint8_t b = 255;
+        //         uint8_t g = 178;
+        //         uint8_t b = 102;
 
         //         uint32_t rgb = ((uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b);
         //         pRGB.rgb = *reinterpret_cast<float*>(&rgb);
@@ -1492,6 +1580,10 @@ private:
     void publishGlobalTargetMarker(const Person &person)
     {
 
+        if(person.location_.point.x == 0.0 && 
+            person.location_.point.y == 0.0){
+                return;
+        }
 
         visualization_msgs::Marker targetFromCameraPoseMsg;
         targetFromCameraPoseMsg.header.frame_id = base_frame_;
@@ -1986,9 +2078,7 @@ private:
 
     image_transport::Publisher debug_map_img_pub_;
 
-    // face detection
-    // Ptr<Facemark> facemark_;
-    // CascadeClassifier face_cascade_;
+   ros::Timer obstaclesTimer_;
 
 
 
@@ -2031,7 +2121,7 @@ private:
     int countFindWithLidar_ = 0;
     int maxLlidarTrials_ = 5;
     float max_distance_to_follow_ = 5.0;
-    float max_dist_obstacle_collision_ = 0.5;
+    float max_dist_obstacle_collision_ = 0.6;
     bool follow_without_drive_ = false;
 
 
