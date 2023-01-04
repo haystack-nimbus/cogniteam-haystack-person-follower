@@ -70,7 +70,6 @@ using namespace cv;
 using namespace std::chrono;
 
 #define PERSON_CLASS_ID (1)
-#define PERSON_THRESHOLD (0.5)
 
 #define UNKNOWN (-1)
 #define FREE (0)
@@ -146,6 +145,8 @@ public:
         nodePrivate.param("max_dist_current_global_and_prev_global_m", max_dist_current_global_and_prev_global_m_, (float)1.5);  
 
         nodePrivate.param("max_dist_obstacle_collision", max_dist_obstacle_collision_, (float)0.6);
+
+        nodePrivate.param("person_threshold", person_threshold_, (float)0.5);
 
         nodePrivate.param<string>("base_frame", base_frame_, string("base_footprint"));            
 
@@ -340,7 +341,7 @@ public:
                         {    
 
                             float score = detection.results[0].score;
-                            if( score < PERSON_THRESHOLD){
+                            if( score < person_threshold_){
                                 continue;
                             }
                             if ((detection.results[0].id == PERSON_CLASS_ID) )
@@ -1130,7 +1131,7 @@ private:
 
         for (auto detection : detectnetWrapper.detection2DArray.detections)
         {
-            if ((detection.results[0].id == PERSON_CLASS_ID) & (detection.results[0].score >= PERSON_THRESHOLD))
+            if ((detection.results[0].id == PERSON_CLASS_ID) & (detection.results[0].score >= person_threshold_))
             {
                 return true;
             }
@@ -1161,7 +1162,7 @@ private:
         {    
 
             float score = detection.results[0].score;
-            if( score < PERSON_THRESHOLD){
+            if( score < person_threshold_){
                 continue;
             }
             if ((detection.results[0].id == PERSON_CLASS_ID) )
